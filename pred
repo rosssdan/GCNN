@@ -1,0 +1,23 @@
+def predict(test_dataloader):
+		df= test_data3
+		typestr=[]
+		true=[]
+		preds=[]
+		with torch.no_grad():
+			for batch in test_dataloader:
+				for molecule in range(len(batch)):
+					for atom in batch[molecule].x:
+						typestr.append(str_types[str(int((atom[-1])))])
+				for i in (list(batch.y[:,0].detach().numpy())):
+					true.append(float(i))
+				pred = model(batch.x.t()[:5].t(), batch.edge_index, batch.edge_type)
+				for i in (list((pred[:,0].detach().numpy()))):
+					preds.append(float(i))
+
+		df['typestr']=typestr
+		df['normalized_shift'] = true
+		df['normalized_prediction']=preds
+
+		return df
+
+	
