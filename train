@@ -1,0 +1,43 @@
+import warnings
+warnings.filterwarnings("ignore")
+
+# Root mean squared error
+loss_fn = torch.nn.MSELoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)  
+pred_list = []
+
+# Use GPU for training
+#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#model = model.to(device)
+
+def train(train_dataloader):
+    # Enumerate over the data
+    for batch in train_dataloader:
+      model.train()
+      # Reset gradients
+      optimizer.zero_grad() 
+      # Passing the node features and the connection info
+      pred = model(batch.x.t()[:5].t(), batch.edge_index, batch.edge_type)
+      pred_list.append(pred)
+      #print(pred)
+      #print(batch.y)
+      # Calculating the loss and gradients
+      loss = loss_fn(pred, batch.y)     
+      #print(loss)
+      loss.backward()  
+      # Update using the gradients
+      optimizer.step()   
+    return loss
+
+print("Starting training...")
+losses = []
+X_data = []
+y_data = []
+for epoch in range(200):
+    loss = train(train_dataloader)
+    losses.append(loss)
+    if epoch % 10 == 0:
+      X_data.append(epoch)
+      y_data.append(loss)
+      print(f"Epoch {epoch} | Train Loss {loss}")
+      
