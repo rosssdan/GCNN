@@ -1,0 +1,110 @@
+atom_types={'H':1, 'C':6, 'N':7, 'O':8, 'F':9, 'Si':14, 'P':15, 'S':16, 'Cl':17, 'Br':35}
+str_types = {'1':'H', '6':'C', '7':'N', '8':'O', '9':'F', '14':'Si', '15':'P','16':'S', '17':'Cl', '35':'Br'} 
+
+def normalize(data, min_max=False):
+   
+
+     if min_max:
+          return (data - np.min(data)) / (np.max(data) - np.min(data))
+     else:
+          return (data - np.mean(data)) / np.std(data)
+        
+def make_scl_dict(data):
+	target_dict = {'min': np.min(data), 'max' : np.max(data), 'mean' : np.mean(data), 'std' : np.std(data)}	
+	return target_dict
+
+def make_graphs(data):
+
+    print('scaling..')
+    scl_dict = {}
+    data["normalized_shift"]=0
+
+    for atom_type in tqdm(atom_types):
+         vals = []
+
+         for i in range(len(data)):
+              if data.iloc[i]['typestr']==atom_type:
+                   vals.append(data.iloc[i]['shift'])
+         if len(vals) ==0:
+                   continue
+         scaled_vals = normalize(vals)
+         target_dict = make_scl_dict(vals)
+         scl_dict[atom_type] = target_dict
+         c=0
+
+         for i in range(len(data)):
+               if data.iloc[i]["typestr"]== atom_type:
+                    data.at[i, 'normalized_shift'] = scaled_vals[c]
+                    c+=1
+                   
+                
+
+                
+    
+    #Split the dataframe up by grouping atoms from the same molecule together:
+    mols = data.molecule_name.unique()
+    types = {'H': 0, 'C': 1, 'N': 2, 'O': 3, 'F': 4} 
+
+    #Create an empty list which each complete graph can be appended to:
+    graph_list = []
+    
+    for i, mol in enumerate(mols):
+        print(mol)
+        #Create a new dataframe (molecule) for each molecule. Each dataframe contains every atom for its respective molecule
+        molecule = data[data['molecule_name'] == mol]
+        sub_list1 = []
+        sub_list2 = []
+        bonding_type = []
+        type_idx = []
+        atomic_number = []
+
+        #Go through the dataframes for each molecule, atom by atom:
+        for atom in range(len(molecule)):
+            
+            #Refer to the "types" dictionary above. For each atom in the dataframe, append the value in "types" which corresponds to its typestr value to 
+            #the type_idx list
+            type_idx.append(types[data.iloc[atom]["typestr"]])
+
+            #Append the typeint value for each atom in that molecule dataframe to the list atomic_number:
+            atomic_number.append(float(data.iloc[atom]["typeint"]))
+
+            #for each atom in this molecule's dataframe, loop through the connectivity matrix for that atom, keeping track of index position:
+            for j, conn in enumerate(molecule.iloc[atom]["conn"]):
+                if conn != 0:
+                    #If the value of "conn" is non-zero for that atom at index position j, append the atom index to sub_list1:
+                    sub_list1.append(atom)
+                    #If the value of "conn" is non-zero for that atom at index position j, append that index position to sub_list2
+                    sub_list2.append(j)
+                    #If the value of "conn" is non-zero for that atom at index position j, append the value of "conn" to the bonding_type list
+                    bonding_type.append(conn)
+
+            
+     
+        
+        #Specify the x, y and z coordinates of each atom in the molecule dataframe:
+        pos = []
+        pos.append(molecule['x'])
+        pos.append(molecule['y'])
+        pos.append(molecule["z"])
+        pos = np.array(pos)
+        pos = torch.tensor(pos)
+        pos = pos.t()
+        
+        #One-hot encode the type_idx list(containing the numerical typestr value for each atom):
+        x1 = F.one_hot(torch.tensor(type_idx), num_classes= len(types))
+        #Create a 1D array of the typeint values for each atom:
+        x2 = torch.tensor([atomic_number], dtype = torch.float32, requires_grad=False).t().contiguous()
+        #Concatenate the two matrices, so each one-hot encoded line from x1 has an additional, final value specifying the atomic number of that atom:
+        nfm = torch.cat([x1.to(torch.float32), x2], dim =-1)
+        #Create the edge feature matrix by combining the two sub_lists. 
+        efm = torch.tensor([sub_list1, sub_list2], dtype= torch.long)
+        #Define the target value we want to predict as the normalized chemical shift from the dataframe:
+        y = torch.tensor(molecule["normalized_shift"].to_list()).unsqueeze(1)
+        #Create a graph containing all the above information:
+        graph = Data(x=nfm.to(torch.float32), pos= pos, edge_index = efm, edge_type = torch.tensor(bonding_type, dtype = torch.float), y= y, idx = i)
+        #Append this graph to the list of graphs and loop back to the start, emptying all indented lists:
+        graph_list.append(graph)
+
+    return graph_list, data
+    
+   
